@@ -196,6 +196,7 @@ class ECalHitsDataset(Dataset):
             for k in table:
                 if isinstance(table[k], awkward.array.objects.ObjectArray):
                     table[k] = awkward.JaggedArray.fromiter(table[k]).flatten()
+                
             
             ### DEFINING recoilX, recoilY, recoilPx, recoilPy, recoilPz ###
             el = (t['EcalScoringPlaneHits_v12.pdgID_'].array() == 11) * \
@@ -203,11 +204,11 @@ class ECalHitsDataset(Dataset):
                  (t['EcalScoringPlaneHits_v12.z_'].array() < 241) * \
                  (t['EcalScoringPlaneHits_v12.pz_'].array() > 0)
 
-            recoilX = t['EcalScoringPlaneHits_v12.x_'].array()[el].pad(1, clip=True).fillna(0).flatten()
-            recoilY = t['EcalScoringPlaneHits_v12.y_'].array()[el].pad(1, clip=True).fillna(0).flatten()
-            recoilPx = t['EcalScoringPlaneHits_v12.px_'].array()[el].pad(1, clip=True).fillna(0).flatten()
-            recoilPy = t['EcalScoringPlaneHits_v12.py_'].array()[el].pad(1, clip=True).fillna(0).flatten()
-            recoilPz = t['EcalScoringPlaneHits_v12.pz_'].array()[el].pad(1, clip=True).fillna(0).flatten()
+            recoilX = t['EcalScoringPlaneHits_v12.x_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
+            recoilY = t['EcalScoringPlaneHits_v12.y_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
+            recoilPx = t['EcalScoringPlaneHits_v12.px_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
+            recoilPy = t['EcalScoringPlaneHits_v12.py_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
+            recoilPz = t['EcalScoringPlaneHits_v12.pz_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
             ### ###     
 
             ### LOOPING THROUGH EACH EVENT AND MAKE A BOOLEAN ARRAY FOR THE EVENTS ###
@@ -236,10 +237,16 @@ class ECalHitsDataset(Dataset):
                 # If the i-th event is in the Fiducial Region, mark the i-th index of the simEvents array with a 1 aka TRUE #
                 if inside == True:
                     simEvents[i] = 1
-
-
+           
             ### ###
-
+            
+            ### APPLYING simEvents TO THE PRESELECTION ###  
+            
+            for k in table:
+                table[k] = table[k][simEvents]
+        
+            ### ###
+                
             #eid = table[self._id_branch]
             energy = table[self._energy_branch]
             x = table[self._x_branch]  # NEW
