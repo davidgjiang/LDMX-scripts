@@ -152,7 +152,7 @@ class ECalHitsDataset(Dataset):
                 table['TargetSPRecoilE_pt'] = np.sqrt(t['TargetScoringPlaneHits_v12.px_'].array()[el] ** 2 + t['TargetScoringPlaneHits_v12.py_'].array()[el] ** 2).pad(1, clip=True).fillna(-999).flatten()
 
 
-        def _read_file(table):
+        def _read_file(t, table):
             # load data from one file
             start, stop = [int(x * len(table[self._branches[0]])) for x in load_range]
             for k in table:
