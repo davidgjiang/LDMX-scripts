@@ -204,18 +204,18 @@ class ECalHitsDataset(Dataset):
                  (t['EcalScoringPlaneHits_v12.z_'].array() < 241) * \
                  (t['EcalScoringPlaneHits_v12.pz_'].array() > 0)
 
-            recoilX = t['EcalScoringPlaneHits_v12.x_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
-            recoilY = t['EcalScoringPlaneHits_v12.y_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
-            recoilPx = t['EcalScoringPlaneHits_v12.px_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
-            recoilPy = t['EcalScoringPlaneHits_v12.py_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
-            recoilPz = t['EcalScoringPlaneHits_v12.pz_'].array()[el].pad(1, clip=True).fillna(0).flatten()[pos_pass_presel]
+            recoilX = t['EcalScoringPlaneHits_v12.x_'].array()[el].pad(1, clip=True).fillna(0).flatten()[start:stop][pos_pass_presel]
+            recoilY = t['EcalScoringPlaneHits_v12.y_'].array()[el].pad(1, clip=True).fillna(0).flatten()[start:stop][pos_pass_presel]
+            recoilPx = t['EcalScoringPlaneHits_v12.px_'].array()[el].pad(1, clip=True).fillna(0).flatten()[start:stop][pos_pass_presel]
+            recoilPy = t['EcalScoringPlaneHits_v12.py_'].array()[el].pad(1, clip=True).fillna(0).flatten()[start:stop][pos_pass_presel]
+            recoilPz = t['EcalScoringPlaneHits_v12.pz_'].array()[el].pad(1, clip=True).fillna(0).flatten()[start:stop][pos_pass_presel]
             ### ###     
 
             ### LOOPING THROUGH EACH EVENT AND MAKE A BOOLEAN ARRAY FOR THE EVENTS ###
 
             simEvents = np.zeros(len(recoilPx), dtype=bool)
 
-            for i in range(0, 1, len(recoilPx)):
+            for i in range(len(recoilPx)):
 
                 recoilfX = CallX(ecalFaceZ, recoilX[i], recoilY[i], scoringPlaneZ, recoilPx[i], recoilPy[i], recoilPz[i])
                 recoilfY = CallY(ecalFaceZ, recoilX[i], recoilY[i], scoringPlaneZ, recoilPx[i], recoilPy[i], recoilPz[i])
