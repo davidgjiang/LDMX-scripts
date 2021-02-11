@@ -11,14 +11,18 @@ import awkward
 import concurrent.futures
 executor = concurrent.futures.ThreadPoolExecutor(12)
 
-MAX_NUM_ECAL_HITS = 50
+#ecalBranches = [  # EcalVeto data to save.  Could add more, but probably unnecessary.
+#    'discValue_',
+#    'recoilX_',
+#    'recoilY_',
+#    ]
+
+#MAX_NUM_ECAL_HITS = 50
+# NEW:
+MAX_NUM_ECAL_HITS = 80
+
 # NEW:  LayerZ data (may be outdated)
 # Assumed outdated; not currently used
-layerZs = [223.8000030517578, 226.6999969482422, 233.0500030517578, 237.4499969482422, 245.3000030517578, 251.1999969482422, 260.29998779296875,
-        266.70001220703125, 275.79998779296875, 282.20001220703125, 291.29998779296875, 297.70001220703125, 306.79998779296875, 313.20001220703125,
-        322.29998779296875, 328.70001220703125, 337.79998779296875, 344.20001220703125, 353.29998779296875, 359.70001220703125, 368.79998779296875,
-        375.20001220703125, 384.29998779296875, 390.70001220703125, 403.29998779296875, 413.20001220703125, 425.79998779296875, 435.70001220703125,
-        448.29998779296875, 458.20001220703125, 470.79998779296875, 480.70001220703125, 493.29998779296875, 503.20001220703125]
 
 # NEW: Radius of containment data
 #from 2e (currently not used)
@@ -68,8 +72,8 @@ def CallY(Hitz, Recoilx, Recoily, Recoilz, RPx, RPy, RPz):
 
     y_val = (float(Hitz - Point_yz[1]) / float(slope_yz)) + Point_yz[0]
     return y_val
-### ###
 
+### ###
 
 def _concat(arrays, axis=0):
     if len(arrays) == 0:
@@ -79,22 +83,25 @@ def _concat(arrays, axis=0):
     else:
         return awkward.concatenate(arrays, axis=axis)
 
-
-def _pad(a, pad_value=0):
-    return a.pad(MAX_NUM_ECAL_HITS, clip=True).fillna(0).regular()
+# Outdated
+#def _pad(a, pad_value=0):
+#    return a.pad(MAX_NUM_ECAL_HITS, clip=True).fillna(0).regular()
 
 
 class ECalHitsDataset(Dataset):
 
-    def __init__(self, siglist, bkglist, load_range=(0, 1), apply_preselection=True, ignore_evt_limits=False, obs_branches=[], coord_ref=None, detector_version='v12'):
+    def __init__(self, siglist, bkglist, load_range=(0, 1), apply_preselection=True, ignore_evt_limits=False, obs_branches=[], veto_branches=[], coord_ref=None, detector_version='v12'):
         super(ECalHitsDataset, self).__init__()
+
         # first load cell map
         self._load_cellMap(version=detector_version)
         self._id_branch = 'EcalRecHits_v12.id_'  # Technically not necessary anymore
         self._energy_branch = 'EcalRecHits_v12.energy_'
-        self._x_branch = 'EcalRecHits_v12.xpos_'
-        self._y_branch = 'EcalRecHits_v12.ypos_'
-        self._z_branch = 'EcalRecHits_v12.zpos_'
+        ecal_veto_branches = ['EcalVeto_v12.'+b for b in veto_branches]
+        #self._test_branch = 'EcalVeto_v12'
+        #self._x_branch = 'EcalRecHits_v12.xpos_'
+        #self._y_branch = 'EcalRecHits_v12.ypos_'
+        #self._z_branch = 'EcalRecHits_v12.zpos_'
         assert(detector_version == 'v12')
         #if detector_version == 'v9':
         #    print("WARNING:  Using v9 detector!  Case is not currently handled; will produce an error.")
@@ -103,13 +110,14 @@ class ECalHitsDataset(Dataset):
         #if detector_version == 'v12':
         #    self._id_branch = 'EcalRecHits_v12.id_'
         #    self._energy_branch = 'EcalRecHits_v12.energy_'
-        self._branches = [self._energy_branch, self._x_branch, self._y_branch, self._z_branch]
-        #                [self._id_branch, self._energy_branch]
+
+        #self._branches = [self._id_branch, self._energy_branch, self._x_branch, self._y_branch, self._z_branch]
+        self._branches = [self._id_branch, self._energy_branch] #, self._test_branch]
 
         self.extra_labels = []
         self.presel_eff = {}
         self.var_data = {}
-        self.obs_data = {k:[] for k in obs_branches}
+        self.obs_data = {k:[] for k in obs_branches + ecal_veto_branches}
 
         print('Using coord_ref=%s' % coord_ref)
         def _load_coord_ref(t, table):
@@ -120,14 +128,23 @@ class ECalHitsDataset(Dataset):
                  (t['EcalScoringPlaneHits_v12.z_'].array() > 240) * \
                  (t['EcalScoringPlaneHits_v12.z_'].array() < 241) * \
                  (t['EcalScoringPlaneHits_v12.pz_'].array() > 0)
-            # Note:  pad() below ensures that only one SP electron is used if there's multiple (I believe)
 
-            etraj_x_sp = t['EcalScoringPlaneHits_v12.x_'].array()[el].pad(1, clip=True).fillna(0).flatten()  #Arr of floats.  [0][0] fails.
-            etraj_y_sp = t['EcalScoringPlaneHits_v12.y_'].array()[el].pad(1, clip=True).fillna(0).flatten()
-            etraj_z_sp = t['EcalScoringPlaneHits_v12.z_'].array()[el].pad(1, clip=True).fillna(0).flatten()
-            etraj_px_sp = t['EcalScoringPlaneHits_v12.px_'].array()[el].pad(1, clip=True).fillna(0).flatten()
-            etraj_py_sp = t['EcalScoringPlaneHits_v12.py_'].array()[el].pad(1, clip=True).fillna(0).flatten()
-            etraj_pz_sp = t['EcalScoringPlaneHits_v12.pz_'].array()[el].pad(1, clip=True).fillna(0).flatten()
+            # Note:  pad() below ensures that only one SP electron is used if there's multiple (I believe)
+            # pad() for awkward arrays is outdated; have to replace it...
+            etraj_branches = ['EcalScoringPlaneHits_v12.x_', 'EcalScoringPlaneHits_v12.y_', 'EcalScoringPlaneHits_v12.z_',
+                              'EcalScoringPlaneHits_v12.px_', 'EcalScoringPlaneHits_v12.py_', 'EcalScoringPlaneHits_v12.pz_']
+            def _pad_array(arr):
+                # = t['EcalScoringPlaneHits_v12.x_'].array()[el].pad(1, clip=True).fillna(0).flatten()  #Arr of floats.  [0][0] fails.
+                arr = awkward.pad_none(arr, 1, clip=True)
+                arr = awkward.fill_none(arr, 0)
+                return awkward.flatten(arr)
+
+            etraj_x_sp = _pad_array(t['EcalScoringPlaneHits_v12.x_'].array()[el])  #Arr of floats.  [0][0] fails.
+            etraj_y_sp = _pad_array(t['EcalScoringPlaneHits_v12.y_'].array()[el])
+            etraj_z_sp = _pad_array(t['EcalScoringPlaneHits_v12.z_'].array()[el])
+            etraj_px_sp = _pad_array(t['EcalScoringPlaneHits_v12.px_'].array()[el])
+            etraj_py_sp = _pad_array(t['EcalScoringPlaneHits_v12.py_'].array()[el])
+            etraj_pz_sp = _pad_array(t['EcalScoringPlaneHits_v12.pz_'].array()[el])
 
             # Create vectors holding the electron/photon momenta so the trajectory projections can be found later
             # Set xtraj_p_norm relative to z=1 to make projecting easier:
@@ -172,32 +189,48 @@ class ECalHitsDataset(Dataset):
             #print("Finished loading coord ref")
 
 
-        def _load_recoil_pt(t, table):  # NOTE:  Is this ever used?
+        def _load_recoil_pt(t, table):
             if len(obs_branches):
+                # Note:  0.177 value may be wrong...but should be first SP after target.
                 el = (t['TargetScoringPlaneHits_v12.pdgID_'].array() == 11) * \
-                     (t['TargetScoringPlaneHits_v12.z_'].array() > 0.551 and t['TargetScoringPlaneHits_v12.z_'].array() < 0.552) \
+                     (t['TargetScoringPlaneHits_v12.z_'].array() > 0.176) * \
+                     (t['TargetScoringPlaneHits_v12.z_'].array() < 0.178) * \
                      (t['TargetScoringPlaneHits_v12.pz_'].array() > 0)
-                table['TargetSPRecoilE_pt'] = np.sqrt(t['TargetScoringPlaneHits_v12.px_'].array()[el] ** 2 + t['TargetScoringPlaneHits_v12.py_'].array()[el] ** 2).pad(1, clip=True).fillna(-999).flatten()
-
+                #table['TargetSPRecoilE_pt'] = np.sqrt(t['TargetScoringPlaneHits_v12.px_'].array()[el] ** 2 + t['TargetScoringPlaneHits_v12.py_'].array()[el] ** 2).pad(1, clip=True).fillna(-999).flatten()
                 
-        def _read_file(t, table): # ADDED 't' AS A PARAMETER
+                tmp = np.sqrt(t['TargetScoringPlaneHits_v12.px_'].array()[el] ** 2 + t['TargetScoringPlaneHits_v12.py_'].array()[el] ** 2)
+                tmp = awkward.pad_none(tmp, 1, clip=True)
+                tmp = awkward.fill_none(tmp, -999)
+                table['TargetSPRecoilE_pt'] = awkward.flatten(tmp)
+
+
+        def _read_file(t, table):
             # load data from one file
             start, stop = [int(x * len(table[self._branches[0]])) for x in load_range]
+            #print("start, stop: ", (start, stop))
             for k in table:
                 table[k] = table[k][start:stop]
             n_inclusive = len(table[self._branches[0]])  # before preselection
 
+            #print("**CHECK TABLE DIMS, post basic: ", awkward.type(table["EcalRecHits_v12.id_"]))
+            #print(awkward.type(table["EcalRecHits_v12.id_"][0]))
+
+
             if apply_preselection:
-                pos_pass_presel = (table[self._energy_branch] > 0).sum() < MAX_NUM_ECAL_HITS
+                #pos_pass_presel = (table[self._energy_branch] > 0).sum() < MAX_NUM_ECAL_HITS
+                pos_pass_presel = awkward.sum(table[self._energy_branch] > 0, axis=1) < MAX_NUM_ECAL_HITS
+                #print(awkward.type(table[self._energy_branch] > 0))
+                print("First few hit sums: ", awkward.sum(table[self._energy_branch] > 0, axis=1)[:10])
+                #print(pos_pass_presel)
                 for k in table:
                     table[k] = table[k][pos_pass_presel]
             n_selected = len(table[self._branches[0]])  # after preselection
+            print("EVENTS BEFORE PRESELECTION (in _read_file):  {}".format(n_inclusive))
+            print("EVENTS AFTER PRESELECTION: ", n_selected)
 
-            for k in table:
-                if isinstance(table[k], awkward.array.objects.ObjectArray):
-                    table[k] = awkward.JaggedArray.fromiter(table[k]).flatten()
+            if n_selected == 0:   #Ignore this file
+                print("ERROR:  ParticleNet can't handle files with no events passing selection!")
                 
-            
             ### DEFINING recoilX, recoilY, recoilPx, recoilPy, recoilPz ###
             el = (t['EcalScoringPlaneHits_v12.pdgID_'].array() == 11) * \
                  (t['EcalScoringPlaneHits_v12.z_'].array() > 240) * \
@@ -246,26 +279,13 @@ class ECalHitsDataset(Dataset):
                 table[k] = table[k][simEvents]
         
             ### ###
-                
-            #eid = table[self._id_branch]
+
+            eid = table[self._id_branch]
             energy = table[self._energy_branch]
-            x = table[self._x_branch]  # NEW
-            y = table[self._y_branch]
-            z = table[self._z_branch]
-            print("energy type:", type(energy))
             pos = (energy > 0)
-            print("Pos type:", type(pos))
-            #eid = eid[pos]
+            eid = eid[pos]  # Gets rid of all (AND ONLY) hits with 0 energy
             energy = energy[pos]
-            x = x[pos]
-            y = y[pos]
-            z = z[pos]
-            #layer_id = self._create_layer_branch(z)
-            #(x, y, z), layer_id = self._parse_cid(eid)  # layer_id > 0, so can use layer_id-1 to index e/ptraj_ref
-            # POSSIBLY OUTDATED; detector geometry has changed.
-            # Why not just make this general and use EcalRecHits_[].xpos_, etc?
-            # Will need to treat z pos info differently to get layers...
-            layer_id = self._create_layer_branch(z)
+            (x, y, z), layer_id = self._parse_cid(eid)  # layer_id > 0, so can use layer_id-1 to index e/ptraj_ref
 
 
             # Now, work with table['etraj_ref'] and table['ptraj_ref'].
@@ -301,7 +321,7 @@ class ECalHitsDataset(Dataset):
                 for j in range(len(x[i])):  #range(MAX_NUM_ECAL_HITS):  # For every hit...
                     layer_index = int(layer_id[i][j])
                     # Calculate xy for projected trajectory in same layer
-                    delta_z = layerZs[layer_index] - etraj_sp[2]
+                    delta_z = self._layerZs[layer_index] - etraj_sp[2]
                     etraj_point = (etraj_sp[0] + enorm_sp[0]*delta_z, etraj_sp[1] + enorm_sp[1]*delta_z)
                     ptraj_point = (ptraj_sp[0] + pnorm_sp[0]*delta_z, ptraj_sp[1] + pnorm_sp[1]*delta_z)
                     # Additionally, calculate recoil angle (angle of pnorm_sp):
@@ -344,7 +364,7 @@ class ECalHitsDataset(Dataset):
                     if insideElectronRadius:
                         x_e[i][j] = x[i][j] - etraj_point[0]  # Store coordinates relative to the xy distance from the trajectory
                         y_e[i][j] = y[i][j] - etraj_point[1]
-                        z_e[i][j] = z[i][j] - layerZs[0]  # Defined relative to the ecal face
+                        z_e[i][j] = z[i][j] - self._layerZs[0]  # Defined relative to the ecal face
                         #eid_e[i][j] = eid[i][j]
                         log_energy_e[i][j] = np.log(energy[i][j]) if energy[i][j] > 0 else 0
                         layer_id_e[i][j] = layer_id[i][j]
@@ -352,7 +372,7 @@ class ECalHitsDataset(Dataset):
                     if insidePhotonRadius:
                         x_p[i][j] = x[i][j] - ptraj_point[0]  # Store coordinates relative to the xy distance from the trajectory
                         y_p[i][j] = y[i][j] - ptraj_point[1]
-                        z_p[i][j] = z[i][j] - layerZs[0]  # Defined relative to the ecal face
+                        z_p[i][j] = z[i][j] - self._layerZs[0]  # Defined relative to the ecal face
                         #eid_p[i][j] = eid[i][j]
                         log_energy_p[i][j] = np.log(energy[i][j]) if energy[i][j] > 0 else 0
                         layer_id_p[i][j] = layer_id[i][j]
@@ -360,7 +380,7 @@ class ECalHitsDataset(Dataset):
                     else:
                         x_o[i][j] = x[i][j] - ptraj_point[0]  # Store coordinates relative to the first ecal hit
                         y_o[i][j] = y[i][j] - ptraj_point[1]
-                        z_o[i][j] = z[i][j] - layerZs[0]  # Defined relative to the ecal face
+                        z_o[i][j] = z[i][j] - self._layerZs[0]  # Defined relative to the ecal face
                         #eid_o[i][j] = eid[i][j]
                         log_energy_o[i][j] = np.log(energy[i][j]) if energy[i][j] > 0 else 0
                         layer_id_o[i][j] = layer_id[i][j]
@@ -376,7 +396,7 @@ class ECalHitsDataset(Dataset):
                         #'x_o':x_o, 'y_o':y_o, 'z_o':z_o, 'layer_id_o':layer_id_o,
                        }
 
-            obs_dict = {k: table[k] for k in obs_branches}
+            obs_dict = {k: table[k] for k in obs_branches + ecal_veto_branches}
 
             return (n_inclusive, n_selected), var_dict, obs_dict
 
@@ -393,7 +413,7 @@ class ECalHitsDataset(Dataset):
                 n_total_inclusive = 0
                 n_total_selected = 0
                 var_dict = {}
-                obs_dict = {k:[] for k in obs_branches}
+                obs_dict = {k:[] for k in obs_branches + ecal_veto_branches}
                 # NEW:  Dictionary storing particle data for e/p trajectory
                 # Want position, momentum of e- hit; calc photon info from it
                 spHit_dict = {}
@@ -406,12 +426,34 @@ class ECalHitsDataset(Dataset):
 #                             print('... ignoring empty file %s' % fp)
                             continue
                         load_branches = [k for k in self._branches + obs_branches if '.' in k and k[-1] == '_']
-                        table = t.arrays(load_branches, namedecode='utf-8', executor=executor)
+                        table_temp = t.arrays(expressions=load_branches, interpretation_executor=executor)  #, library="ak")
+                        #print("New table type is", awkward.type(table))
+                        #print(awkward.type(table["EcalRecHits_v12.id_"]))
+                        # NOTE:  New type of table is an awkward array.  Can index w/ ["BranchName..."], but it's not a dict anymore.
+                        # Fix that:  Want to combine everything into a single dict.
+                        table = {}
+                        for k in load_branches:
+                            table[k] = table_temp[k]
+
+
+                        # Now go through and load Ecal branches separately.
+                        if veto_branches:
+                            # Manually add EcalVeto vars to table
+                            EcalVeto = t["EcalVeto_v12"]
+                            for branch in veto_branches:
+                                table["EcalVeto_v12."+branch] = EcalVeto[branch].array(interpretation_executor=executor)
+
                         _load_coord_ref(t, table)
                         _load_recoil_pt(t, table)
-                        (n_inc, n_sel), v_d, o_d = _read_file(t, table) # ADDED 't' AS A PARAMETER
+
+                        (n_inc, n_sel), v_d, o_d = _read_file(t, table)
+
                         n_total_inclusive += n_inc
                         n_total_selected += n_sel
+                        print("N_SELECTED:  ", n_sel)
+                        print("TOTAL SELECTED:  ", n_total_selected)
+                        
+
                         for k in v_d:
                             if k in var_dict:
                                 var_dict[k].append(v_d[k])
@@ -446,7 +488,7 @@ class ECalHitsDataset(Dataset):
                         self.var_data[k].append(var_dict[k])
                     else:
                         self.var_data[k] = [var_dict[k]]
-                for k in obs_branches:
+                for k in obs_branches + ecal_veto_branches:
                     self.obs_data[k].append(obs_dict[k])
                 n_sum += n_total_loaded
             return n_sum
@@ -460,7 +502,7 @@ class ECalHitsDataset(Dataset):
         self.extra_labels = np.concatenate(self.extra_labels)
         for k in self.var_data:
             self.var_data[k] = _concat(self.var_data[k])
-        for k in obs_branches:
+        for k in obs_branches + ecal_veto_branches:
             self.obs_data[k] = _concat(self.obs_data[k])
 
         # training features
@@ -485,67 +527,43 @@ class ECalHitsDataset(Dataset):
         assert(len(self.features) == len(self.label))
 
         # NEW:  Free up old variables after the coords and features have been assigned
-        for key, item in self.var_data.items():
-            del item
-        for key, item in self.obs_data.items():
-            del item
+        #for key, item in self.var_data.items():
+        #    del item
+        #for key, item in self.obs_data.items():
+        #    del item
 
 
-    def _load_cellMap(self, version='v12'): # CHANGED 'v9' to 'v12'
+    def _load_cellMap(self, version='v12'):
         self._cellMap = {}
         for i, x, y in np.loadtxt('data/%s/cellmodule.txt' % version):
             self._cellMap[i] = (x, y)
         self._layerZs = np.loadtxt('data/%s/layer.txt' % version)
+        print("Loaded detector info")
 
-    def _parse_cid(self, cid):  # Replacing w/ _create_layer_branch()
-        # cid type is jaggedarray
-        cell = (cid.content & 0xFFFF8000) >> 15
-        module = (cid.content & 0x7000) >> 12
-        layer = (cid.content & 0xFF0) >> 4
-        # layer type is np array
+    def _parse_cid(self, cid):  # Retooled for v12
+        # For id details, see (?):  DetDescr/src/EcalID.cxx
+        # Flatten arrays to 1D numpy arrays so zip, map will work
+        cell   = (awkward.to_numpy(awkward.flatten(cid)) >> 0)  & 0xFFF
+        module = (awkward.to_numpy(awkward.flatten(cid)) >> 12) & 0x1F
+        layer  = (awkward.to_numpy(awkward.flatten(cid)) >> 17) & 0x3F
+        
         mcid = 10 * cell + module
         x, y = zip(*map(self._cellMap.__getitem__, mcid))
         z = list(map(self._layerZs.__getitem__, layer))
-        x = cid.copy(content=np.array(x, dtype='float32'))
-        y = cid.copy(content=np.array(y, dtype='float32'))
-        z = cid.copy(content=np.array(z, dtype='float32'))
-        layer_id = cid.copy(content=np.array(layer, dtype='float32'))
-        return (x, y, z), layer_id
 
-    def _create_layer_branch(self, z_arr):
-        # Find all layer positions:
-        layer_list = []  # List of all layer positions, will be sorted
-        #print("Creating layer branch")
-        done = False
-        for evt in range(len(z_arr)):
-            z_evt = z_arr[evt]
-            for ht in range(len(z_evt)):
-                z = z_evt[ht]
-                if not z in layer_list:
-                    layer_list.append(z)
-                    done = False
-                    if len(layer_list) == 34:
-                        done = True
-                        break
-            if done:  break
-        layer_list.sort()
-        layer_dict = {}
-        for i in range(len(layer_list)):
-            layer_dict[layer_list[i]] = i
-        # layer_id should be a jagged array!  (awkward)
-        # Try to use the above method...
-        #print("Z_arr type:", type(z_arr))
-        #print("layer_dict, z_arr types:", type(layer_dict), type(z_arr))
-        def getLayer(thing):
-            #print(type(thing))
-            #print(thing)
-            #return np.array([layer_dict[th] for th in thing])
-            return layer_dict[float(thing)]
-        z_arr_ = list(map(getLayer, z_arr.content))
-        layer_id = z_arr.copy(content=np.array(z_arr_, dtype='float32'))  # Want the same shape, etc
-        #print("COPIED")
-        #print("Sample:", layer_id[0])
-        return layer_id
+        def unflatten_array(x, base_array):
+            # x = 1D flattened np array, base_array has the desired shape
+            return awkward.Array(awkward.layout.ListOffsetArray64(
+                                    base_array.layout.offsets,
+                                    awkward.layout.NumpyArray(np.array(x, dtype='float32'))
+                                    )
+                                )
+        x        = unflatten_array(x, cid)
+        y        = unflatten_array(y, cid)
+        z        = unflatten_array(z, cid)
+        layer_id = unflatten_array(layer, cid)
+
+        return (x, y, z), layer_id
 
     @property
     def num_features(self):
