@@ -230,8 +230,14 @@ class ECalHitsDataset(Dataset):
 
             if n_selected == 0:   #Ignore this file
                 print("ERROR:  ParticleNet can't handle files with no events passing selection!")
-                
+            
             ### DEFINING recoilX, recoilY, recoilPx, recoilPy, recoilPz ###
+            def _pad_array(arr):
+                # = t['EcalScoringPlaneHits_v12.x_'].array()[el].pad(1, clip=True).fillna(0).flatten()  #Arr of floats.  [0][0] fails.
+                arr = awkward.pad_none(arr, 1, clip=True)
+                arr = awkward.fill_none(arr, 0)
+                return awkward.flatten(arr)    
+            
             el = (t['EcalScoringPlaneHits_v12.pdgID_'].array() == 11) * \
                  (t['EcalScoringPlaneHits_v12.z_'].array() > 240) * \
                  (t['EcalScoringPlaneHits_v12.z_'].array() < 241) * \
