@@ -262,7 +262,7 @@ class ECalHitsDataset(Dataset):
 
                 # FIDUCIAL OR NOT #
 
-                inside = False
+                nonFiducial = True
 
                 if not recoilX[i] == -9999 and not recoilY[i] ==  -9999 and not recoilPx[i] == -9999 and not recoilPy[i] == -9999 and not recoilPz[i] == -9999:
                     for x in self._cellMap.values():
@@ -270,12 +270,12 @@ class ECalHitsDataset(Dataset):
                         ydis = recoilfX - x[0]
                         celldis = np.sqrt(xdis**2 + ydis**2)
                         if celldis <= cell_radius:
-                            inside = True
+                            nonFiducial = False
                             break
                 # #
 
                 # If the i-th event is in the Fiducial Region, mark the i-th index of the simEvents array with a 1 aka TRUE #
-                if inside == True:
+                if nonFiducial == True:
                     simEvents[i] = 1
            
             ### ###
